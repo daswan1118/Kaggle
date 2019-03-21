@@ -5,6 +5,7 @@ library(caret)
 library(randomForest)
 library(xlsx)
 
+setwd("C:/Users/kk82/Desktop")
 
 ########## GET DATA ##########
 
@@ -13,6 +14,7 @@ seeds <- read.csv("./input/Stage2datafiles/NCAATourneySeeds.csv", stringsAsFacto
 tourney <- read.csv("./input/Stage2datafiles/NCAATourneyCompactResults.csv", stringsAsFactors = FALSE)
 regular <- read.csv("./input/Stage2datafiles/RegularSeasonCompactResults.csv", stringsAsFactors = FALSE)
 rank <- read.csv("./input/MasseyOrdinals_thru_2019_day_128/MasseyOrdinals_thru_2019_day_128.csv", stringsAsFactors = FALSE)
+conference <- read.csv("./input/Stage2datafiles/TeamConferences.csv", stringsAsFactors = FALSE)
 Stage1 <- read.csv("./input/SampleSubmissionStage1.csv", stringsAsFactors = FALSE) %>% 
   select(ID) %>% 
   separate(ID, sep = "_", into = c("Season", "Team1", "Team2"), convert = TRUE)
@@ -88,6 +90,15 @@ stage2_temp$result <- 0
 stage2_temp$type = "stage2"
 data <- rbind(train,stage1_temp,stage2_temp)
 
+# Combine - conference
+head(conference)
+data <- left_join(data,conference,by=c("Season"="Season","Team1"="TeamID"))
+colnames(data)[length(names(data))] <- "conf1"
+data <- left_join(data,conference,by=c("Season"="Season","Team2"="TeamID"))
+colnames(data)[length(names(data))] <- "conf2"
+data$confdiff <- ifelse(data$conf1 == data$conf2, 0 ,1)
+data$confcode <- paste(data$conf1,data$conf2,sep="")
+
 # Combine - rank
 data <- left_join(data,rank_group,by=c("Season"="Season","Team1"="TeamID"))
 colnames(data)[length(names(data))] <- "rank1"
@@ -120,6 +131,9 @@ data$W_ratediff <- data$W_rate1 - data$W_rate2
 data$region1 <- as.numeric(factor(data$region1))
 data$region2 <- as.numeric(factor(data$region2))
 data$regioncode <- as.numeric(factor(data$regioncode))
+data$conf1 <- as.numeric(factor(data$conf1))
+data$conf2 <- as.numeric(factor(data$conf2))
+data$confcode <- as.numeric(factor(data$confcode))
 
 # Split train, Stage1/2 back out
 trainData_raw <- data[data$type == "train",]
@@ -141,6 +155,7 @@ Stage2Data_raw <- predict(pp, newdata = Stage2Data_raw)
 variables <- c("rank1","rank2",
                "rankdiff",
                "region1", "seed1","region2","seed2",
+               "conf1", "conf2","confdiff","confcode",              
                "seeddiff","regiondiff","regioncode",
                "scorediff1","W_rate1","scorediff2","W_rate2",
                "scorediffdiff","W_ratediff")
@@ -173,7 +188,7 @@ cctrl1 <- trainControl(method="cv", number=5, returnResamp="all",
                        classProbs=TRUE, summaryFunction=twoClassSummary)
 set.seed(929)
 rf_cv <- train(trainData, trainresult, method = "rf", 
-                trControl = cctrl1, metric = "ROC", 
+                trControl = cctrl1, metric = "ROC",
                ntree = 100, tuneGrid = expand.grid(.mtry=5))
 
 # Predict on Test & Check Accuracy
